@@ -1,0 +1,271 @@
+"use client";
+
+import React, { useState, useEffect, useMemo } from "react";
+import { Reel, ReelFilterOptions } from "@/lib/types";
+import { subscribeReels } from "@/lib/firestore";
+import AddReelForm from "@/components/AddReelForm";
+import StatsBar from "@/components/StatsBar";
+import FilterBar from "@/components/FilterBar";
+import ReelsTable from "@/components/ReelsTable";
+import ReelCard from "@/components/ReelCard";
+import AnalyticsPanel from "@/components/AnalyticsPanel";
+
+export default function DashboardPage() {
+  const [reels, setReels] = useState<Reel[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [firestoreError, setFirestoreError] = useState<string | null>(null);
+
+  // Filter and Sort State
+  const [filters, setFilters] = useState<ReelFilterOptions>({
+    searchQuery: "",
+    category: "All",
+    status: "All",
+    sortBy: "newest",
+    dateFilter: "",
+  });
+
+  const [selectedReelId, setSelectedReelId] = useState<string | null>(null);
+
+  // Real-time Firestore onSnapshot Subscription
+  useEffect(() => {
+    setIsLoading(true);
+    setFirestoreError(null);
+
+    const unsubscribe = subscribeReels(
+      (snapshotReels) => {
+        setReels(snapshotReels);
+        setIsLoading(false);
+      },
+      (error) => {
+        console.error("Firestore subscription error:", error);
+        setFirestoreError("Failed to connect to Firestore. Check your Firebase environment configuration.");
+        setIsLoading(false);
+      }
+    );
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
+  // Filter and Sort Reels client-side on snapshot data
+  const filteredAndSortedReels = useMemo(() => {
+    let result = [...reels];
+
+    // 1. Search Query Filter (Username + Caption)
+    if (filters.searchQuery.trim()) {
+      const q = filters.searchQuery.toLowerCase().trim();
+      result = result.filter(
+        (r) =>
+          r.username.toLowerCase().includes(q) ||
+          r.caption.toLowerCase().includes(q)
+      );
+    }
+
+    // 2. Category Filter
+    if (filters.category !== "All") {
+      result = result.filter((r) => r.category === filters.category);
+    }
+
+    // 3. Status Filter
+    if (filters.status !== "All") {
+      result = result.filter((r) => r.status === filters.status);
+    }
+
+    // 3.5. Date Filter (matches YYYY-MM-DD on addedDate or postedDate)
+    if (filters.dateFilter) {
+      result = result.filter((r) => {
+        const addedDateStr = r.addedDate ? r.addedDate.split("T")[0] : "";
+        const postedDateStr = r.postedDate ? r.postedDate.split("T")[0] : "";
+        return addedDateStr === filters.dateFilter || postedDateStr === filters.dateFilter;
+      });
+    }
+
+    // 4. Sort Options
+    result.sort((a, b) => {
+      if (filters.sortBy === "highestViews") {
+        return b.views - a.views;
+      }
+      if (filters.sortBy === "highestLikes") {
+        return b.likes - a.likes;
+      }
+      if (filters.sortBy === "highestEngagement") {
+        const engA = a.likes + a.comments + a.shares + a.saves;
+        const engB = b.likes + b.comments + b.shares + b.saves;
+        return engB - engA;
+      }
+      // Default: "newest" (addedDate descending)
+      const dateA = new Date(a.addedDate).getTime();
+      const dateB = new Date(b.addedDate).getTime();
+      return dateB - dateA;
+    });
+
+    return result;
+  }, [reels, filters]);
+
+  const handleClearFilters = () => {
+    setFilters({
+      searchQuery: "",
+      category: "All",
+      status: "All",
+      sortBy: "newest",
+      dateFilter: "",
+    });
+    setSelectedReelId(null);
+  };
+
+  const selectedReel = useMemo(() => {
+    if (!selectedReelId) return null;
+    return reels.find((r) => r.id === selectedReelId) || null;
+  }, [reels, selectedReelId]);
+
+  return (
+    <main className="min-h-screen bg-[#0F1117] text-white flex flex-col items-center">
+      {/* 1. TOPBAR */}
+      <header className="w-full border-b border-[#2D3245] bg-[#1A1D27]/80 backdrop-blur sticky top-0 z-30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#7C3AED] to-purple-400 flex items-center justify-center text-white shadow-lg shadow-[#7C3AED]/30">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                className="w-5 h-5"
+              >
+                <path d="M4.5 4.5a3 3 0 00-3 3v9a3 3 0 003 3h15a3 3 0 003-3v-9a3 3 0 00-3-3h-15zM10.5 8.25l5.25 3.75-5.25 3.75V8.25z" />
+              </svg>
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                ReelTracker
+                <span className="text-[10px] font-semibold bg-[#7C3AED]/20 text-purple-300 px-2 py-0.5 rounded-full border border-[#7C3AED]/40 uppercase tracking-widest">
+                  MVP
+                </span>
+              </h1>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="bg-[#0F1117] border border-[#2D3245] rounded-full px-3.5 py-1 flex items-center gap-2 text-xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-gray-400">Total Reels:</span>
+              <span className="font-mono font-bold text-white">{reels.length}</span>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* MAIN CONTAINER */}
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 flex flex-col">
+        {/* Connection Error Banner */}
+        {firestoreError && (
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5 shrink-0"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
+              </svg>
+              <span>{firestoreError}</span>
+            </div>
+          </div>
+        )}
+
+        {/* 2. ADD REEL PANEL */}
+        <AddReelForm />
+
+        {/* 3. STATS BAR */}
+        <StatsBar reels={reels} />
+
+        {/* 4. FILTER BAR */}
+        <FilterBar
+          filters={filters}
+          onFilterChange={setFilters}
+          onClearFilters={handleClearFilters}
+          resultCount={filteredAndSortedReels.length}
+          totalCount={reels.length}
+        />
+
+        {/* 5. REELS TABLE & DETAIL CARD SPLIT LAYOUT */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8 items-start w-full">
+          <div className="lg:col-span-2">
+            <ReelsTable
+              reels={filteredAndSortedReels}
+              isLoading={isLoading}
+              selectedReelId={selectedReelId}
+              onSelectReel={setSelectedReelId}
+              filters={filters}
+              onFilterChange={setFilters}
+              onClearFilters={handleClearFilters}
+            />
+          </div>
+          <div className="lg:col-span-1 lg:sticky lg:top-20">
+            {selectedReel ? (
+              <div className="relative">
+                {/* Deselect / Close Button */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedReelId(null)}
+                  className="absolute top-2 right-2 z-10 bg-black/60 hover:bg-black/90 text-white rounded-full p-1 transition-all"
+                  title="Close Details"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    className="w-4 h-4"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </button>
+                <ReelCard reel={selectedReel} />
+              </div>
+            ) : (
+              <div className="bg-[#1A1D27]/50 border border-[#2D3245]/50 border-dashed rounded-xl p-8 text-center text-gray-400">
+                <svg
+                  className="w-12 h-12 mx-auto text-gray-500 mb-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                  />
+                </svg>
+                <h4 className="font-semibold text-white text-sm mb-1">No Reel Selected</h4>
+                <p className="text-xs">
+                  Click "View Card" or any row in the table to display metrics, update status, and add notes.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 6. ANALYTICS PANEL */}
+        <AnalyticsPanel reels={reels} />
+      </div>
+
+      {/* FOOTER */}
+      <footer className="w-full border-t border-[#2D3245]/60 bg-[#0F1117] py-4 text-center text-xs text-gray-500">
+        ReelTracker Dashboard &copy; {new Date().getFullYear()} &bull; Built with Next.js 14, Tailwind & Firebase
+      </footer>
+    </main>
+  );
+}
