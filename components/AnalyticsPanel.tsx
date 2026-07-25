@@ -21,7 +21,8 @@ export default function AnalyticsPanel({ reels }: AnalyticsPanelProps) {
     .slice(0, 3);
 
   // Calculate Top 3 Highest Engagement (likes + comments + shares + saves)
-  const getEngagement = (r: Reel) => r.likes + r.comments + r.shares + r.saves;
+  const safeM = (n: number) => (n === -1 ? 0 : n);
+  const getEngagement = (r: Reel) => safeM(r.likes) + safeM(r.comments) + safeM(r.shares) + safeM(r.saves);
   const topEngagement = [...reels]
     .sort((a, b) => getEngagement(b) - getEngagement(a))
     .slice(0, 3);

@@ -90,8 +90,9 @@ export default function DashboardPage() {
         return b.likes - a.likes;
       }
       if (filters.sortBy === "highestEngagement") {
-        const engA = a.likes + a.comments + a.shares + a.saves;
-        const engB = b.likes + b.comments + b.shares + b.saves;
+        const safeM = (n: number) => (n === -1 ? 0 : n);
+        const engA = safeM(a.likes) + safeM(a.comments) + safeM(a.shares) + safeM(a.saves);
+        const engB = safeM(b.likes) + safeM(b.comments) + safeM(b.shares) + safeM(b.saves);
         return engB - engA;
       }
       // Default: "newest" (addedDate descending)

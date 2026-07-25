@@ -73,22 +73,45 @@ export async function POST(req: NextRequest) {
 
     const item = items[0];
 
-    // Extract values with robust fallback structure
+    // Log raw Apify item keys for debugging (server-side only)
+    console.log("[fetch-reel] Raw Apify item keys:", Object.keys(item));
+    console.log("[fetch-reel] Raw metrics:", {
+      videoPlayCount: item.videoPlayCount,
+      videoViewCount: item.videoViewCount,
+      playCount: item.playCount,
+      viewsCount: item.viewsCount,
+      likesCount: item.likesCount,
+      commentsCount: item.commentsCount,
+      sharesCount: item.sharesCount,
+      savesCount: item.savesCount,
+      displayUrl: item.displayUrl,
+      thumbnailUrl: item.thumbnailUrl,
+      thumbnail_src: item.thumbnail_src,
+      imageUrl: item.imageUrl,
+    });
+
+    // --- THUMBNAIL ---
+    // Priority: thumbnailUrl (native reel poster) > displayUrl > imageUrl > thumbnail_src > images[0]
     const thumbnail =
-      item.displayUrl ||
-      item.url ||
-      (Array.isArray(item.images) && item.images[0]) ||
       item.thumbnailUrl ||
+      item.displayUrl ||
+      item.imageUrl ||
+      item.thumbnail_src ||
+      (Array.isArray(item.images) && item.images[0]) ||
+      item.url ||
       "";
 
+    // --- USERNAME ---
     const username =
       item.ownerUsername ||
       (item.owner && item.owner.username) ||
       item.username ||
       "unknown";
 
+    // --- CAPTION ---
     const caption = item.caption || item.text || "";
 
+    // --- POSTED DATE ---
     let postedDate = "Unknown";
     if (item.timestamp) {
       try {
@@ -98,20 +121,47 @@ export async function POST(req: NextRequest) {
       }
     } else if (item.takenAt) {
       try {
-        postedDate = new Date(item.takenAt).toISOString();
+        postedDate = new Date(item.takenAt * 1000).toISOString();
       } catch {
         postedDate = String(item.takenAt);
       }
     }
 
-    const views = Number(item.videoViewCount ?? item.videoViews ?? item.playCount ?? item.viewsCount ?? 0);
+    // --- METRICS ---
+    // Views: videoPlayCount is the correct public metric for reels (videoViewCount is deprecated)
+    const views = Number(
+      item.videoPlayCount ??
+      item.playCount ??
+      item.videoViewCount ??
+      item.viewsCount ??
+      0
+    );
+
+    // Likes (confirmed field name: likesCount)
     const likes = Number(item.likesCount ?? item.likes ?? 0);
+
+    // Comments (confirmed field name: commentsCount)
     const comments = Number(item.commentsCount ?? item.comments ?? 0);
-    const shares = Number(item.videoPlayCount ?? item.videoViewCount ?? item.sharesCount ?? 0);
-    const saves = Number(item.savesCount ?? item.saves ?? 0);
+
+    // Shares — Instagram does NOT expose share counts via public web scraping.
+    // sharesCount / shares fields are NOT present in Apify's response.
+    // We use -1 as a sentinel so the UI can show "—" instead of a misleading "0".
+    const sharesRaw = item.sharesCount ?? item.shares ?? null;
+    const shares = sharesRaw !== null ? Number(sharesRaw) : -1;
+
+    // Saves — same issue: Instagram does not expose saves to public scrapers.
+    const savesRaw = item.savesCount ?? item.saves ?? null;
+    const saves = savesRaw !== null ? Number(savesRaw) : -1;
+
+    console.log("[fetch-reel] Parsed metrics:", { views, likes, comments, shares, saves, thumbnail });
+
+    // Wrap thumbnail through server proxy to avoid CORS / hotlink blocks
+    const proxiedThumbnail = thumbnail
+      ? `/api/proxy-image?url=${encodeURIComponent(thumbnail)}`
+      : "";
 
     return NextResponse.json({
-      thumbnail,
+      thumbnail: proxiedThumbnail,
       username,
       caption,
       postedDate,

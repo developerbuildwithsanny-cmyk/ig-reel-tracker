@@ -48,6 +48,7 @@ export function subscribeReels(
             category: data.category || "BuildWithSanny",
             status: data.status || "Pending",
             notes: data.notes || "",
+            lastRefreshed: data.lastRefreshed || undefined,
           };
         });
         onNext(reels);
@@ -120,7 +121,37 @@ export async function deleteReel(id: string): Promise<void> {
   } catch (error) {
     console.error("Failed to delete reel from Firestore:", error);
     throw new Error(
-      error instanceof Error ? error.message : "Failed to delete reel from Firestore"
+      error instanceof Error ? error.message : "Failed to delete reel doc from Firestore"
+    );
+  }
+}
+
+/**
+ * Updates live metrics (views, likes, comments, shares, saves, thumbnail, lastRefreshed)
+ * for an existing reel document in Firestore.
+ */
+export async function updateReelMetrics(
+  id: string,
+  metrics: {
+    views: number;
+    likes: number;
+    comments: number;
+    shares: number;
+    saves: number;
+    thumbnail?: string;
+    lastRefreshed?: string;
+  }
+): Promise<void> {
+  try {
+    const docRef = doc(db, REELS_COLLECTION, id);
+    await updateDoc(docRef, {
+      ...metrics,
+      lastRefreshed: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Failed to update reel metrics in Firestore:", error);
+    throw new Error(
+      error instanceof Error ? error.message : "Failed to update reel metrics in Firestore"
     );
   }
 }

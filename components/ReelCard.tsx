@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Reel, Status, Category } from "@/lib/types";
 import StatusBadge from "./StatusBadge";
 import CategoryBadge from "./CategoryBadge";
-import { updateReelStatus, updateReelNotes, deleteReel } from "@/lib/firestore";
+import { updateReelStatus, updateReelNotes, deleteReel, updateReelMetrics } from "@/lib/firestore";
 
 interface ReelCardProps {
   reel: Reel;
@@ -18,13 +18,98 @@ export default function ReelCard({ reel }: ReelCardProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshSuccess, setRefreshSuccess] = useState(false);
 
-  // Synchronize local state if prop changes
-  React.useEffect(() => {
+  /** Ensure raw Instagram CDN URLs are always served through the proxy */
+  const getProxiedThumbnail = (url: string): string => {
+    if (!url) return "";
+    if (url.startsWith("/api/proxy-image")) return url;
+    if (url.startsWith("http")) {
+      return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+    }
+    return url;
+  };
+
+  /** How long ago a date string was (e.g. "2 hrs ago", "5 min ago") */
+  const timeAgo = (isoStr: string): string => {
+    const diff = Date.now() - new Date(isoStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins} min ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs} hr${hrs > 1 ? "s" : ""} ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days} day${days > 1 ? "s" : ""} ago`;
+  };
+
+  /** Core refresh function — exported so both auto & manual can call it */
+  const refreshMetrics = useCallback(async (silent = false) => {
+    if (!silent) {
+      setIsRefreshing(true);
+      setActionError(null);
+      setRefreshSuccess(false);
+    } else {
+      setIsRefreshing(true); // show subtle spinner even on auto
+    }
+    try {
+      const res = await fetch("/api/fetch-reel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instagramUrl: reel.instagramUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.details || data.error || "Failed to refresh");
+      }
+      await updateReelMetrics(reel.id, {
+        views: Number(data.views) || 0,
+        likes: Number(data.likes) || 0,
+        comments: Number(data.comments) || 0,
+        shares: Number(data.shares) || 0,
+        saves: Number(data.saves) || 0,
+        thumbnail: data.thumbnail || reel.thumbnail,
+      });
+      if (!silent) {
+        setRefreshSuccess(true);
+        setTimeout(() => setRefreshSuccess(false), 3000);
+      }
+    } catch (err) {
+      console.error("Failed to refresh metrics:", err);
+      if (!silent) {
+        setActionError(err instanceof Error ? err.message : "Refresh failed");
+      }
+    } finally {
+      setIsRefreshing(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reel.id, reel.instagramUrl]);
+
+  /**
+   * AUTO-REFRESH on open:
+   * When this card mounts (i.e. user clicked "View Card"), check if the
+   * metrics are stale (no lastRefreshed, or refreshed > 1 hour ago).
+   * If stale → silently refresh in the background.
+   */
+  useEffect(() => {
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+    const isStale =
+      !reel.lastRefreshed ||
+      Date.now() - new Date(reel.lastRefreshed).getTime() > ONE_HOUR_MS;
+
+    if (isStale) {
+      refreshMetrics(true); // silent = true → no success toast
+    }
+  // Only run when the reel ID changes (i.e. a different card was opened)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reel.id]);
+
+  // Synchronize local status/notes state when Firestore pushes new data
+  useEffect(() => {
     setCurrentStatus(reel.status);
   }, [reel.status]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     setNotesText(reel.notes || "");
   }, [reel.notes]);
 
@@ -70,6 +155,7 @@ export default function ReelCard({ reel }: ReelCardProps) {
     }
   };
 
+
   const formatNumber = (num: number): string => {
     if (num >= 1000000) {
       return (num / 1000000).toFixed(1).replace(/\.0$/, "") + "M";
@@ -78,6 +164,15 @@ export default function ReelCard({ reel }: ReelCardProps) {
       return (num / 1000).toFixed(1).replace(/\.0$/, "") + "k";
     }
     return num.toLocaleString();
+  };
+
+  /**
+   * Like formatNumber but shows "—" when value is -1
+   * (sentinel used when Instagram doesn't expose the metric publicly)
+   */
+  const formatMetric = (num: number): string => {
+    if (num === -1) return "—";
+    return formatNumber(num);
   };
 
   const formatDate = (dateStr: string) => {
@@ -106,7 +201,7 @@ export default function ReelCard({ reel }: ReelCardProps) {
         >
           {reel.thumbnail ? (
             <img
-              src={reel.thumbnail}
+              src={getProxiedThumbnail(reel.thumbnail)}
               alt={`Reel by @${reel.username}`}
               className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-200"
               onError={(e) => {
@@ -164,35 +259,62 @@ export default function ReelCard({ reel }: ReelCardProps) {
             {reel.caption || <span className="italic text-gray-500">No caption available</span>}
           </p>
 
-          {/* Dates Row */}
-          <div className="flex items-center justify-between text-[11px] text-gray-400 mb-3 pb-2.5 border-b border-[#2D3245]/60">
-            <span>Posted: {formatDate(reel.postedDate)}</span>
-            <span>Added: {formatDate(reel.addedDate)}</span>
+          {/* Dates Row + Last Synced */}
+          <div className="text-[11px] text-gray-400 mb-3 pb-2.5 border-b border-[#2D3245]/60 space-y-1">
+            <div className="flex items-center justify-between">
+              <span>Posted: {formatDate(reel.postedDate)}</span>
+              <span>Added: {formatDate(reel.addedDate)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1">
+                {isRefreshing ? (
+                  <>
+                    <svg className="animate-spin h-2.5 w-2.5 text-purple-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span className="text-purple-400">Syncing live data...</span>
+                  </>
+                ) : reel.lastRefreshed ? (
+                  <span className="text-emerald-500/70">✓ Synced {timeAgo(reel.lastRefreshed)}</span>
+                ) : (
+                  <span className="text-yellow-500/60">⚠ Not yet synced</span>
+                )}
+              </span>
+            </div>
           </div>
 
           {/* Metrics Row */}
-          <div className="grid grid-cols-5 gap-1 bg-[#0F1117] rounded-lg p-2 mb-3 border border-[#2D3245]/50 text-center font-mono">
+          <div className="grid grid-cols-5 gap-1 bg-[#0F1117] rounded-lg p-2 mb-1 border border-[#2D3245]/50 text-center font-mono">
             <div className="flex flex-col items-center">
               <span className="text-[10px] text-gray-400">👁</span>
-              <span className="text-xs font-semibold text-white">{formatNumber(reel.views)}</span>
+              <span className="text-xs font-semibold text-white">{formatMetric(reel.views)}</span>
             </div>
             <div className="flex flex-col items-center">
               <span className="text-[10px] text-rose-400">❤️</span>
-              <span className="text-xs font-semibold text-rose-300">{formatNumber(reel.likes)}</span>
+              <span className="text-xs font-semibold text-rose-300">{formatMetric(reel.likes)}</span>
             </div>
             <div className="flex flex-col items-center">
               <span className="text-[10px] text-blue-400">💬</span>
-              <span className="text-xs font-semibold text-blue-300">{formatNumber(reel.comments)}</span>
+              <span className="text-xs font-semibold text-blue-300">{formatMetric(reel.comments)}</span>
             </div>
-            <div className="flex flex-col items-center">
+            <div className="flex flex-col items-center" title="Shares — not exposed by Instagram publicly">
               <span className="text-[10px] text-amber-400">🔁</span>
-              <span className="text-xs font-semibold text-amber-300">{formatNumber(reel.shares)}</span>
+              <span className={`text-xs font-semibold ${reel.shares === -1 ? "text-gray-600" : "text-amber-300"}`}>
+                {formatMetric(reel.shares)}
+              </span>
             </div>
-            <div className="flex flex-col items-center">
+            <div className="flex flex-col items-center" title="Saves — not exposed by Instagram publicly">
               <span className="text-[10px] text-emerald-400">🔖</span>
-              <span className="text-xs font-semibold text-emerald-300">{formatNumber(reel.saves)}</span>
+              <span className={`text-xs font-semibold ${reel.saves === -1 ? "text-gray-600" : "text-emerald-300"}`}>
+                {formatMetric(reel.saves)}
+              </span>
             </div>
           </div>
+          {/* Data source disclaimer */}
+          <p className="text-[10px] text-gray-600 mb-3 text-center">
+            Via Apify scraper · Shares &amp; Saves not public on Instagram
+          </p>
         </div>
 
         {/* Inline Editing Controls */}
@@ -238,6 +360,42 @@ export default function ReelCard({ reel }: ReelCardProps) {
               </span>
             )}
           </div>
+
+          {/* Refresh Metrics Button */}
+          <button
+            type="button"
+            onClick={() => refreshMetrics(false)}
+            disabled={isRefreshing}
+            className={`w-full flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-medium transition-all duration-150 cursor-pointer border ${
+              refreshSuccess
+                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                : "bg-[#0F1117] border-[#2D3245] text-gray-400 hover:text-purple-300 hover:border-purple-500/40 hover:bg-purple-500/5"
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
+          >
+            {isRefreshing ? (
+              <>
+                <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 5.373 0 12 0v4a8 8 0 00-8 8h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                <span>Refreshing metrics...</span>
+              </>
+            ) : refreshSuccess ? (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+                <span>Metrics updated!</span>
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                  <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                </svg>
+                <span>Refresh Live Metrics</span>
+              </>
+            )}
+          </button>
 
           {/* Card Footer: Delete Action & Errors */}
           <div className="flex items-center justify-between pt-1">
@@ -297,3 +455,4 @@ export default function ReelCard({ reel }: ReelCardProps) {
     </div>
   );
 }
+

@@ -64,6 +64,7 @@ export default function AddReelForm({ onReelAdded }: AddReelFormProps) {
         category,
         status,
         notes: "",
+        lastRefreshed: new Date().toISOString(), // mark freshly fetched
       };
 
       // 3. Save to Firestore

@@ -33,7 +33,20 @@ export default function ReelsTable({
     return num.toLocaleString();
   };
 
-  const getEngagement = (r: Reel) => r.likes + r.comments + r.shares + r.saves;
+  /** Ensure raw Instagram CDN URLs are served through the server-side proxy */
+  const getProxiedThumbnail = (url: string): string => {
+    if (!url) return "";
+    if (url.startsWith("/api/proxy-image")) return url;
+    if (url.startsWith("http")) {
+      return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+    }
+    return url;
+  };
+
+  /** Treat -1 (unavailable metric) as 0 for engagement totals */
+  const safeMetric = (n: number) => (n === -1 ? 0 : n);
+  const getEngagement = (r: Reel) =>
+    safeMetric(r.likes) + safeMetric(r.comments) + safeMetric(r.shares) + safeMetric(r.saves);
 
   const formatDate = (dateStr: string) => {
     if (!dateStr || dateStr === "Unknown") return "Unknown";
@@ -194,7 +207,7 @@ export default function ReelsTable({
                       <div className="w-14 h-9 rounded bg-[#0F1117] overflow-hidden shrink-0 border border-[#2D3245]/50">
                         {reel.thumbnail ? (
                           <img
-                            src={reel.thumbnail}
+                            src={getProxiedThumbnail(reel.thumbnail)}
                             alt=""
                             className="w-full h-full object-cover"
                             onError={(e) => {

@@ -18,6 +18,8 @@ export interface Reel {
   category: Category;
   status: Status;
   notes: string;
+  /** ISO timestamp of the last time metrics were synced from Apify */
+  lastRefreshed?: string;
 }
 
 export type SortOption = "newest" | "highestViews" | "highestLikes" | "highestEngagement";
