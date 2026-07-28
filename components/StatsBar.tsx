@@ -11,10 +11,26 @@ export default function StatsBar({ reels }: StatsBarProps) {
   const recordedCount = reels.filter((r) => r.status === "Recorded").length;
   const postedCount = reels.filter((r) => r.status === "Posted").length;
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const getKolkataDateString = (isoStr: string): string => {
+    if (!isoStr || isoStr === "Unknown") return "";
+    try {
+      const d = new Date(isoStr);
+      const formatter = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      });
+      return formatter.format(d);
+    } catch {
+      return "";
+    }
+  };
+
+  const todayStr = getKolkataDateString(new Date().toISOString());
   const addedTodayCount = reels.filter((r) => {
     if (!r.addedDate) return false;
-    return r.addedDate.split("T")[0] === todayStr;
+    return getKolkataDateString(r.addedDate) === todayStr;
   }).length;
 
   const stats = [

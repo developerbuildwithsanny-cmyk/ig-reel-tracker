@@ -26,6 +26,10 @@ export default function DashboardPage() {
 
   const [selectedReelId, setSelectedReelId] = useState<string | null>(null);
 
+  // Syncing State
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
+
   // Real-time Firestore onSnapshot Subscription
   useEffect(() => {
     setIsLoading(true);
@@ -72,12 +76,12 @@ export default function DashboardPage() {
       result = result.filter((r) => r.status === filters.status);
     }
 
-    // 3.5. Date Filter (matches YYYY-MM-DD on addedDate or postedDate)
+    // 3.5. Date Filter (matches YYYY-MM-DD on addedDate or postedDate) in Asia/Kolkata timezone
     if (filters.dateFilter) {
       result = result.filter((r) => {
-        const addedDateStr = r.addedDate ? r.addedDate.split("T")[0] : "";
-        const postedDateStr = r.postedDate ? r.postedDate.split("T")[0] : "";
-        return addedDateStr === filters.dateFilter || postedDateStr === filters.dateFilter;
+        const addedKolkata = getKolkataDateString(r.addedDate);
+        const postedKolkata = getKolkataDateString(r.postedDate);
+        return addedKolkata === filters.dateFilter || postedKolkata === filters.dateFilter;
       });
     }
 
@@ -115,6 +119,27 @@ export default function DashboardPage() {
     setSelectedReelId(null);
   };
 
+  const handleSyncReels = async () => {
+    setIsSyncing(true);
+    const countToSync = Math.min(50, reels.length);
+    setSyncStatusMsg(`Connecting to Apify and syncing latest ${countToSync} reels...`);
+    try {
+      const res = await fetch("/api/sync-reels", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.details || data.error || "Sync failed");
+      }
+      setSyncStatusMsg(`Successfully synced and updated ${data.updated} reels!`);
+      setTimeout(() => setSyncStatusMsg(null), 6000);
+    } catch (err) {
+      console.error("Bulk sync error:", err);
+      setSyncStatusMsg(err instanceof Error ? err.message : "Sync failed. Try checking APIFY_API_TOKEN configuration.");
+      setTimeout(() => setSyncStatusMsg(null), 8000);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const selectedReel = useMemo(() => {
     if (!selectedReelId) return null;
     return reels.find((r) => r.id === selectedReelId) || null;
@@ -147,7 +172,26 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="bg-[#0F1117] border border-[#2D3245] rounded-full px-3.5 py-1 flex items-center gap-2 text-xs">
+            <button
+              onClick={handleSyncReels}
+              disabled={isSyncing}
+              className="bg-gradient-to-r from-[#7C3AED] to-purple-500 hover:from-[#6D28D9] hover:to-purple-600 text-white text-xs font-semibold px-4 py-2 rounded-full transition-all duration-150 flex items-center gap-1.5 shadow-md shadow-[#7C3AED]/20 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {isSyncing ? (
+                <>
+                  <svg className="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span>Syncing...</span>
+                </>
+              ) : (
+                <>
+                  <span>Sync Reels 🔄</span>
+                </>
+              )}
+            </button>
+            <div className="bg-[#0F1117] border border-[#2D3245] rounded-full px-3.5 py-1.5 flex items-center gap-2 text-xs">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-gray-400">Total Reels:</span>
               <span className="font-mono font-bold text-white">{reels.length}</span>
@@ -158,6 +202,28 @@ export default function DashboardPage() {
 
       {/* MAIN CONTAINER */}
       <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 flex flex-col">
+        {/* Sync Status Banner */}
+        {syncStatusMsg && (
+          <div className={`mb-6 p-4 rounded-xl text-sm flex items-center justify-between transition-all duration-300 ${
+            syncStatusMsg.toLowerCase().includes("failed") || syncStatusMsg.toLowerCase().includes("error")
+              ? "bg-red-500/10 border border-red-500/30 text-red-400"
+              : isSyncing
+              ? "bg-purple-500/10 border border-purple-500/30 text-purple-300"
+              : "bg-emerald-500/10 border border-emerald-500/30 text-emerald-400"
+          }`}>
+            <div className="flex items-center gap-2">
+              {isSyncing ? (
+                <svg className="animate-spin h-4 w-4 text-purple-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+              ) : (
+                <span className="text-base">ℹ️</span>
+              )}
+              <span>{syncStatusMsg}</span>
+            </div>
+          </div>
+        )}
         {/* Connection Error Banner */}
         {firestoreError && (
           <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm flex items-center justify-between">
@@ -181,81 +247,85 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* 2. ADD REEL PANEL */}
-        <AddReelForm />
+        <div className="w-full flex flex-col">
+          {/* 2. ADD REEL PANEL */}
+          <AddReelForm />
 
-        {/* 3. STATS BAR */}
-        <StatsBar reels={reels} />
+          {/* 3. STATS BAR */}
+          <StatsBar reels={reels} />
 
-        {/* 4. FILTER BAR */}
-        <FilterBar
-          filters={filters}
-          onFilterChange={setFilters}
-          onClearFilters={handleClearFilters}
-          resultCount={filteredAndSortedReels.length}
-          totalCount={reels.length}
-        />
-
-        {/* 5. REELS TABLE & DETAIL CARD SPLIT LAYOUT */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8 items-start w-full">
-          <div className="lg:col-span-2">
-            <ReelsTable
-              reels={filteredAndSortedReels}
-              isLoading={isLoading}
-              selectedReelId={selectedReelId}
-              onSelectReel={setSelectedReelId}
+          {/* 4. FILTER BAR - Sticky Row Card */}
+          <div className="sticky top-16 z-20 bg-[#0F1117] py-2">
+            <FilterBar
               filters={filters}
               onFilterChange={setFilters}
               onClearFilters={handleClearFilters}
+              resultCount={filteredAndSortedReels.length}
+              totalCount={reels.length}
             />
           </div>
-          <div className="lg:col-span-1 lg:sticky lg:top-20">
-            {selectedReel ? (
-              <div className="relative">
-                {/* Deselect / Close Button */}
-                <button
-                  type="button"
-                  onClick={() => setSelectedReelId(null)}
-                  className="absolute top-2 right-2 z-10 bg-black/60 hover:bg-black/90 text-white rounded-full p-1 transition-all"
-                  title="Close Details"
-                >
+
+          {/* 5. REELS TABLE & DETAIL CARD SPLIT LAYOUT */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8 items-start w-full lg:sticky lg:top-[170px] z-10">
+            <div className="lg:col-span-2">
+              <ReelsTable
+                reels={filteredAndSortedReels}
+                isLoading={isLoading}
+                selectedReelId={selectedReelId}
+                onSelectReel={setSelectedReelId}
+                filters={filters}
+                onFilterChange={setFilters}
+                onClearFilters={handleClearFilters}
+              />
+            </div>
+            <div className="lg:col-span-1">
+              {selectedReel ? (
+                <div className="relative">
+                  {/* Deselect / Close Button */}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedReelId(null)}
+                    className="absolute top-2 right-2 z-10 bg-black/60 hover:bg-black/90 text-white rounded-full p-1 transition-all"
+                    title="Close Details"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      className="w-4 h-4"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </button>
+                  <ReelCard reel={selectedReel} />
+                </div>
+              ) : (
+                <div className="bg-[#1A1D27]/50 border border-[#2D3245]/50 border-dashed rounded-xl p-8 text-center text-gray-400">
                   <svg
+                    className="w-12 h-12 mx-auto text-gray-500 mb-3"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
                     xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    className="w-4 h-4"
                   >
                     <path
-                      fillRule="evenodd"
-                      d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                      clipRule="evenodd"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.5}
+                      d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
                     />
                   </svg>
-                </button>
-                <ReelCard reel={selectedReel} />
-              </div>
-            ) : (
-              <div className="bg-[#1A1D27]/50 border border-[#2D3245]/50 border-dashed rounded-xl p-8 text-center text-gray-400">
-                <svg
-                  className="w-12 h-12 mx-auto text-gray-500 mb-3"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                    d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
-                  />
-                </svg>
-                <h4 className="font-semibold text-white text-sm mb-1">No Reel Selected</h4>
-                <p className="text-xs">
-                  Click "View Card" or any row in the table to display metrics, update status, and add notes.
-                </p>
-              </div>
-            )}
+                  <h4 className="font-semibold text-white text-sm mb-1">No Reel Selected</h4>
+                  <p className="text-xs">
+                    Click "View Card" or any row in the table to display metrics, update status, and add notes.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -269,4 +339,21 @@ export default function DashboardPage() {
       </footer>
     </main>
   );
+}
+
+// Helper to convert UTC date strings to Kolkata timezone date string (YYYY-MM-DD)
+function getKolkataDateString(isoStr: string): string {
+  if (!isoStr || isoStr === "Unknown") return "";
+  try {
+    const d = new Date(isoStr);
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    return formatter.format(d); // Returns "YYYY-MM-DD"
+  } catch {
+    return "";
+  }
 }

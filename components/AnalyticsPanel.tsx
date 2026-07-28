@@ -34,11 +34,27 @@ export default function AnalyticsPanel({ reels }: AnalyticsPanelProps) {
     count: reels.filter((r) => r.category === cat).length,
   }));
 
-  // Today comparison
-  const todayStr = new Date().toISOString().split("T")[0];
-  const addedToday = reels.filter((r) => r.addedDate && r.addedDate.split("T")[0] === todayStr).length;
+  // Today comparison in Asia/Kolkata timezone
+  const getKolkataDateString = (isoStr: string): string => {
+    if (!isoStr || isoStr === "Unknown") return "";
+    try {
+      const d = new Date(isoStr);
+      const formatter = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      });
+      return formatter.format(d);
+    } catch {
+      return "";
+    }
+  };
+
+  const todayStr = getKolkataDateString(new Date().toISOString());
+  const addedToday = reels.filter((r) => r.addedDate && getKolkataDateString(r.addedDate) === todayStr).length;
   const recordedToday = reels.filter(
-    (r) => r.status === "Recorded" && r.addedDate && r.addedDate.split("T")[0] === todayStr
+    (r) => r.status === "Recorded" && r.addedDate && getKolkataDateString(r.addedDate) === todayStr
   ).length;
 
   const formatNumber = (num: number) => {

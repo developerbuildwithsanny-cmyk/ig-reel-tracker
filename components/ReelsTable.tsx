@@ -52,7 +52,8 @@ export default function ReelsTable({
     if (!dateStr || dateStr === "Unknown") return "Unknown";
     try {
       const d = new Date(dateStr);
-      return d.toLocaleDateString(undefined, {
+      return d.toLocaleDateString("en-IN", {
+        timeZone: "Asia/Kolkata",
         month: "short",
         day: "numeric",
         year: "numeric",
@@ -136,21 +137,22 @@ export default function ReelsTable({
 
   return (
     <div className="w-full bg-[#1A1D27] border border-[#2D3245] rounded-xl shadow-xl overflow-hidden">
-      <div className="overflow-x-auto">
+      {/* Scrollable table container with max-height for large dataset scrolling */}
+      <div className="overflow-auto max-h-[600px] scrollbar-thin scrollbar-thumb-purple-900/60 scrollbar-track-transparent">
         <table className="w-full border-collapse text-left text-sm text-gray-300">
           <thead>
             <tr className="border-b border-[#2D3245] bg-[#161822] text-xs font-semibold uppercase tracking-wider text-gray-400 select-none">
-              <th className="px-4 py-3.5">Reel</th>
-              <th className="px-4 py-3.5">Category</th>
-              <th className="px-4 py-3.5">Status</th>
+              <th className="sticky top-0 bg-[#161822] px-4 py-3.5 z-10 border-b border-[#2D3245]">Reel</th>
+              <th className="sticky top-0 bg-[#161822] px-4 py-3.5 z-10 border-b border-[#2D3245]">Category</th>
+              <th className="sticky top-0 bg-[#161822] px-4 py-3.5 z-10 border-b border-[#2D3245]">Status</th>
               
               {/* Date Added column header with sort */}
               <th 
-                className="px-4 py-3.5 cursor-pointer hover:text-white transition-colors"
+                className="sticky top-0 bg-[#161822] px-4 py-3.5 z-10 border-b border-[#2D3245] cursor-pointer hover:text-white transition-colors"
                 onClick={() => handleSortToggle("newest")}
               >
                 <div className="flex items-center gap-1">
-                  <span>Date Added</span>
+                  <span>Added</span>
                   <span className="text-[10px]">
                     {filters.sortBy === "newest" ? "▼" : "⇅"}
                   </span>
@@ -159,7 +161,7 @@ export default function ReelsTable({
 
               {/* Views column header with sort */}
               <th 
-                className="px-4 py-3.5 cursor-pointer hover:text-white transition-colors text-right"
+                className="sticky top-0 bg-[#161822] px-4 py-3.5 z-10 border-b border-[#2D3245] cursor-pointer hover:text-white transition-colors text-right"
                 onClick={() => handleSortToggle("highestViews")}
               >
                 <div className="flex items-center justify-end gap-1">
@@ -172,7 +174,7 @@ export default function ReelsTable({
 
               {/* Engagement column header with sort */}
               <th 
-                className="px-4 py-3.5 cursor-pointer hover:text-white transition-colors text-right"
+                className="sticky top-0 bg-[#161822] px-4 py-3.5 z-10 border-b border-[#2D3245] cursor-pointer hover:text-white transition-colors text-right"
                 onClick={() => handleSortToggle("highestEngagement")}
               >
                 <div className="flex items-center justify-end gap-1">
@@ -183,7 +185,7 @@ export default function ReelsTable({
                 </div>
               </th>
 
-              <th className="px-4 py-3.5 text-center">Actions</th>
+              <th className="sticky top-0 bg-[#161822] px-4 py-3.5 z-10 border-b border-[#2D3245] text-center">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#2D3245]/50">
@@ -204,12 +206,12 @@ export default function ReelsTable({
                   {/* Reel Info */}
                   <td className="px-4 py-3 min-w-[200px] max-w-[320px]">
                     <div className="flex items-center gap-3">
-                      <div className="w-14 h-9 rounded bg-[#0F1117] overflow-hidden shrink-0 border border-[#2D3245]/50">
+                      <div className="w-8 h-12 rounded bg-[#0F1117] overflow-hidden shrink-0 border border-[#2D3245]/50 flex items-center justify-center">
                         {reel.thumbnail ? (
                           <img
                             src={getProxiedThumbnail(reel.thumbnail)}
                             alt=""
-                            className="w-full h-full object-cover"
+                            className="h-full w-auto object-contain"
                             onError={(e) => {
                               (e.target as HTMLImageElement).src =
                                 "https://images.unsplash.com/photo-1611162617474-5b21e879e113?q=80&w=600&auto=format&fit=crop";
@@ -279,31 +281,21 @@ export default function ReelsTable({
                         </button>
                       </div>
                     ) : (
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onSelectReel(reel.id);
-                          }}
-                          className="text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 px-2 py-1 rounded text-xs transition-colors"
-                        >
-                          View Card
-                        </button>
+                      <div className="flex items-center justify-center">
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             setDeleteConfirmId(reel.id);
                           }}
-                          className="text-gray-500 hover:text-red-400 p-1 rounded hover:bg-red-500/10 transition-colors"
+                          className="text-gray-500 hover:text-red-400 p-1.5 rounded hover:bg-red-500/10 transition-colors"
                           title="Delete Reel"
                         >
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
                             viewBox="0 0 20 20"
                             fill="currentColor"
-                            className="w-3.5 h-3.5"
+                            className="w-4 h-4"
                           >
                             <path
                               fillRule="evenodd"

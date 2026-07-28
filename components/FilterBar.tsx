@@ -77,10 +77,8 @@ export default function FilterBar({
           >
             <option value="All">All Statuses</option>
             <option value="Pending">Pending</option>
-            <option value="Recording">Recording</option>
             <option value="Recorded">Recorded</option>
             <option value="Posted">Posted</option>
-            <option value="Archived">Archived</option>
             <option value="Waste">Waste</option>
           </select>
 

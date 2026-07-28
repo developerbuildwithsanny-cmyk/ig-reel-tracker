@@ -127,10 +127,8 @@ export default function AddReelForm({ onReelAdded }: AddReelFormProps) {
             className="w-full bg-[#0F1117] border border-[#2D3245] rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-[#7C3AED] transition-colors duration-150 cursor-pointer"
           >
             <option value="Pending">Pending</option>
-            <option value="Recording">Recording</option>
             <option value="Recorded">Recorded</option>
             <option value="Posted">Posted</option>
-            <option value="Archived">Archived</option>
             <option value="Waste">Waste</option>
           </select>
         </div>
