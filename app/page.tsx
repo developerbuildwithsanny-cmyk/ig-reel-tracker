@@ -29,6 +29,17 @@ export default function DashboardPage() {
   // Syncing State
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
+  const BATCH_SIZE = 30;
+  const [showSyncMenu, setShowSyncMenu] = useState<boolean>(false);
+
+  // Compute batches based on all current reels
+  const syncBatches = useMemo(() => {
+    const batches = [];
+    for (let i = 0; i < reels.length; i += BATCH_SIZE) {
+      batches.push(reels.slice(i, i + BATCH_SIZE));
+    }
+    return batches;
+  }, [reels]);
 
   // Real-time Firestore onSnapshot Subscription
   useEffect(() => {
@@ -119,21 +130,80 @@ export default function DashboardPage() {
     setSelectedReelId(null);
   };
 
-  const handleSyncReels = async () => {
+  const handleSyncSpecificBatch = async (batchIndex: number) => {
     setIsSyncing(true);
-    const countToSync = Math.min(50, reels.length);
-    setSyncStatusMsg(`Connecting to Apify and syncing latest ${countToSync} reels...`);
+    const batch = syncBatches[batchIndex];
+    const start = batchIndex * BATCH_SIZE + 1;
+    const end = Math.min((batchIndex + 1) * BATCH_SIZE, reels.length);
+    setSyncStatusMsg(`Syncing Batch ${batchIndex + 1} (Reels ${start}-${end})...`);
+    
     try {
-      const res = await fetch("/api/sync-reels", { method: "POST" });
+      const payload = {
+        reels: batch.map(r => ({ id: r.id, instagramUrl: r.instagramUrl }))
+      };
+
+      const res = await fetch("/api/sync-reels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      
       const data = await res.json();
       if (!res.ok || data.error) {
         throw new Error(data.details || data.error || "Sync failed");
       }
-      setSyncStatusMsg(`Successfully synced and updated ${data.updated} reels!`);
+      
+      setSyncStatusMsg(`Successfully synced Batch ${batchIndex + 1}! Updated ${data.updated} reels.`);
+      setTimeout(() => setSyncStatusMsg(null), 6000);
+    } catch (err) {
+      console.error("Batch sync error:", err);
+      setSyncStatusMsg(err instanceof Error ? err.message : "Sync failed.");
+      setTimeout(() => setSyncStatusMsg(null), 8000);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleSyncAllBatched = async () => {
+    setIsSyncing(true);
+    setSyncStatusMsg("Starting full batched sync...");
+    let totalUpdated = 0;
+    let totalProcessed = 0;
+
+    try {
+      for (let i = 0; i < syncBatches.length; i++) {
+        const batch = syncBatches[i];
+        const batchNum = i + 1;
+        const total = syncBatches.length;
+        const start = i * BATCH_SIZE + 1;
+        const end = Math.min((i + 1) * BATCH_SIZE, reels.length);
+        
+        setSyncStatusMsg(`Syncing Batch ${batchNum} of ${total} (Reels ${start}-${end})...`);
+        
+        const payload = {
+          reels: batch.map(r => ({ id: r.id, instagramUrl: r.instagramUrl }))
+        };
+
+        const res = await fetch("/api/sync-reels", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          throw new Error(data.details || data.error || `Sync failed at Batch ${batchNum}`);
+        }
+        
+        totalUpdated += data.updated;
+        totalProcessed += data.processedCount;
+      }
+      
+      setSyncStatusMsg(`Successfully synced all reels! Processed: ${totalProcessed}, Updated: ${totalUpdated}`);
       setTimeout(() => setSyncStatusMsg(null), 6000);
     } catch (err) {
       console.error("Bulk sync error:", err);
-      setSyncStatusMsg(err instanceof Error ? err.message : "Sync failed. Try checking APIFY_API_TOKEN configuration.");
+      setSyncStatusMsg(err instanceof Error ? err.message : "Sync failed.");
       setTimeout(() => setSyncStatusMsg(null), 8000);
     } finally {
       setIsSyncing(false);
@@ -149,7 +219,7 @@ export default function DashboardPage() {
     <main className="min-h-screen bg-[#0F1117] text-white flex flex-col items-center">
       {/* 1. TOPBAR */}
       <header className="w-full border-b border-[#2D3245] bg-[#1A1D27]/80 backdrop-blur sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#7C3AED] to-purple-400 flex items-center justify-center text-white shadow-lg shadow-[#7C3AED]/30">
               <svg
@@ -172,25 +242,103 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={handleSyncReels}
-              disabled={isSyncing}
-              className="bg-gradient-to-r from-[#7C3AED] to-purple-500 hover:from-[#6D28D9] hover:to-purple-600 text-white text-xs font-semibold px-4 py-2 rounded-full transition-all duration-150 flex items-center gap-1.5 shadow-md shadow-[#7C3AED]/20 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-            >
-              {isSyncing ? (
+            <div className="relative flex rounded-full bg-gradient-to-r from-[#7C3AED] to-purple-500 hover:from-[#6D28D9] hover:to-purple-600 shadow-md shadow-[#7C3AED]/20">
+              {/* Main Button: Sync All (Auto-Batched) */}
+              <button
+                onClick={handleSyncAllBatched}
+                disabled={isSyncing || reels.length === 0}
+                className="text-white text-xs font-semibold pl-4 pr-3 py-2 rounded-l-full transition-all duration-150 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer border-r border-white/10"
+                title="Sync all reels in batches of 30 to prevent timeout"
+              >
+                {isSyncing ? (
+                  <>
+                    <svg className="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span>Syncing...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Sync Reels 🔄</span>
+                  </>
+                )}
+              </button>
+
+              {/* Dropdown Toggle Button */}
+              <button
+                onClick={() => setShowSyncMenu(!showSyncMenu)}
+                disabled={isSyncing || reels.length === 0}
+                className="text-white px-2.5 py-2 rounded-r-full transition-all duration-150 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer hover:bg-black/10"
+                title="Select a specific batch to sync"
+              >
+                <svg
+                  className={`w-3.5 h-3.5 transform transition-transform duration-200 ${showSyncMenu ? "rotate-180" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {/* Dropdown Menu */}
+              {showSyncMenu && (
                 <>
-                  <svg className="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  <span>Syncing...</span>
-                </>
-              ) : (
-                <>
-                  <span>Sync Reels 🔄</span>
+                  {/* Invisible overlay to close on click outside */}
+                  <div
+                    className="fixed inset-0 z-40 cursor-default"
+                    onClick={() => setShowSyncMenu(false)}
+                  />
+                  <div className="absolute right-0 top-11 mt-1 w-64 bg-[#1A1D27] border border-[#2D3245] rounded-xl shadow-2xl z-50 py-2 divide-y divide-[#2D3245]/50 animate-in fade-in duration-150">
+                    <div className="px-3.5 py-2">
+                      <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider block mb-1">
+                        Batch Action
+                      </span>
+                      <button
+                        onClick={() => {
+                          setShowSyncMenu(false);
+                          handleSyncAllBatched();
+                        }}
+                        className="w-full text-left text-xs text-white hover:text-purple-300 py-1.5 flex items-center justify-between"
+                      >
+                        <span>Sync All ({reels.length} reels in {syncBatches.length} batches)</span>
+                        <span className="text-[10px] bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded border border-purple-500/30">
+                          Auto
+                        </span>
+                      </button>
+                    </div>
+                    {syncBatches.length > 0 && (
+                      <div className="px-3.5 py-2 max-h-60 overflow-y-auto">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">
+                          Manual Batches ({BATCH_SIZE} per batch)
+                        </span>
+                        {syncBatches.map((batch, index) => {
+                          const start = index * BATCH_SIZE + 1;
+                          const end = Math.min((index + 1) * BATCH_SIZE, reels.length);
+                          return (
+                            <button
+                              key={index}
+                              onClick={() => {
+                                setShowSyncMenu(false);
+                                handleSyncSpecificBatch(index);
+                              }}
+                              className="w-full text-left text-xs text-gray-300 hover:text-white py-1.5 px-1 hover:bg-[#2D3245]/30 rounded transition-colors flex items-center justify-between"
+                            >
+                              <span>Batch {index + 1}</span>
+                              <span className="font-mono text-[10px] text-gray-500">
+                                Reels {start} - {end}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
-            </button>
+            </div>
             <div className="bg-[#0F1117] border border-[#2D3245] rounded-full px-3.5 py-1.5 flex items-center gap-2 text-xs">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-gray-400">Total Reels:</span>
@@ -201,7 +349,7 @@ export default function DashboardPage() {
       </header>
 
       {/* MAIN CONTAINER */}
-      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 flex flex-col">
+      <div className="w-full max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 flex flex-col">
         {/* Sync Status Banner */}
         {syncStatusMsg && (
           <div className={`mb-6 p-4 rounded-xl text-sm flex items-center justify-between transition-all duration-300 ${
@@ -266,8 +414,8 @@ export default function DashboardPage() {
           </div>
 
           {/* 5. REELS TABLE & DETAIL CARD SPLIT LAYOUT */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8 items-start w-full lg:sticky lg:top-[170px] z-10">
-            <div className="lg:col-span-2">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-8 items-start w-full lg:sticky lg:top-[170px] z-10">
+            <div className="lg:col-span-3">
               <ReelsTable
                 reels={filteredAndSortedReels}
                 isLoading={isLoading}

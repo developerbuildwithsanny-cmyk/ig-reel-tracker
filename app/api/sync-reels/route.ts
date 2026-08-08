@@ -27,33 +27,54 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Query Firestore for the latest 50 reels (by addedDate descending)
-    const reelsCollectionRef = collection(db, "reels");
-    const q = query(reelsCollectionRef, orderBy("addedDate", "desc"), limit(50));
-    const snapshot = await getDocs(q);
-
-    if (snapshot.empty) {
-      return NextResponse.json({
-        success: true,
-        processedCount: 0,
-        added: 0,
-        updated: 0,
-        message: "No reels in the database to sync.",
-      });
+    // Check if client sent specific reels to sync
+    let targetReels: { id: string; instagramUrl: string }[] = [];
+    try {
+      const body = await req.json();
+      if (body && Array.isArray(body.reels)) {
+        targetReels = body.reels;
+      }
+    } catch {
+      // No body or invalid JSON, fall back to default behavior
     }
 
     // Map of: normalizedUrl -> { id }
     const existingReels = new Map<string, { id: string }>();
     const targetUrls: string[] = [];
 
-    snapshot.forEach((docSnap) => {
-      const data = docSnap.data();
-      if (data.instagramUrl) {
-        const norm = normalizeInstagramUrl(data.instagramUrl);
-        existingReels.set(norm, { id: docSnap.id });
-        targetUrls.push(data.instagramUrl.trim());
+    if (targetReels.length > 0) {
+      targetReels.forEach((reel) => {
+        if (reel.instagramUrl && reel.id) {
+          const norm = normalizeInstagramUrl(reel.instagramUrl);
+          existingReels.set(norm, { id: reel.id });
+          targetUrls.push(reel.instagramUrl.trim());
+        }
+      });
+    } else {
+      // 1. Query Firestore for the latest 50 reels (by addedDate descending)
+      const reelsCollectionRef = collection(db, "reels");
+      const q = query(reelsCollectionRef, orderBy("addedDate", "desc"), limit(50));
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        return NextResponse.json({
+          success: true,
+          processedCount: 0,
+          added: 0,
+          updated: 0,
+          message: "No reels in the database to sync.",
+        });
       }
-    });
+
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data.instagramUrl) {
+          const norm = normalizeInstagramUrl(data.instagramUrl);
+          existingReels.set(norm, { id: docSnap.id });
+          targetUrls.push(data.instagramUrl.trim());
+        }
+      });
+    }
 
     if (targetUrls.length === 0) {
       return NextResponse.json({

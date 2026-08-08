@@ -142,13 +142,13 @@ export default function ReelsTable({
         <table className="w-full border-collapse text-left text-sm text-gray-300">
           <thead>
             <tr className="border-b border-[#2D3245] bg-[#161822] text-xs font-semibold uppercase tracking-wider text-gray-400 select-none">
-              <th className="sticky top-0 bg-[#161822] px-4 py-3.5 z-10 border-b border-[#2D3245]">Reel</th>
-              <th className="sticky top-0 bg-[#161822] px-4 py-3.5 z-10 border-b border-[#2D3245]">Category</th>
-              <th className="sticky top-0 bg-[#161822] px-4 py-3.5 z-10 border-b border-[#2D3245]">Status</th>
+              <th className="sticky top-0 bg-[#161822] px-2 py-3.5 z-10 border-b border-[#2D3245]">Reel</th>
+              <th className="sticky top-0 bg-[#161822] px-2 py-3.5 z-10 border-b border-[#2D3245]">Category</th>
+              <th className="sticky top-0 bg-[#161822] px-2 py-3.5 z-10 border-b border-[#2D3245]">Status</th>
               
               {/* Date Added column header with sort */}
               <th 
-                className="sticky top-0 bg-[#161822] px-4 py-3.5 z-10 border-b border-[#2D3245] cursor-pointer hover:text-white transition-colors"
+                className="sticky top-0 bg-[#161822] px-2 py-3.5 z-10 border-b border-[#2D3245] cursor-pointer hover:text-white transition-colors"
                 onClick={() => handleSortToggle("newest")}
               >
                 <div className="flex items-center gap-1">
@@ -161,7 +161,7 @@ export default function ReelsTable({
 
               {/* Views column header with sort */}
               <th 
-                className="sticky top-0 bg-[#161822] px-4 py-3.5 z-10 border-b border-[#2D3245] cursor-pointer hover:text-white transition-colors text-right"
+                className="sticky top-0 bg-[#161822] px-2 py-3.5 z-10 border-b border-[#2D3245] cursor-pointer hover:text-white transition-colors text-right"
                 onClick={() => handleSortToggle("highestViews")}
               >
                 <div className="flex items-center justify-end gap-1">
@@ -174,18 +174,18 @@ export default function ReelsTable({
 
               {/* Engagement column header with sort */}
               <th 
-                className="sticky top-0 bg-[#161822] px-4 py-3.5 z-10 border-b border-[#2D3245] cursor-pointer hover:text-white transition-colors text-right"
+                className="sticky top-0 bg-[#161822] px-2 py-3.5 z-10 border-b border-[#2D3245] cursor-pointer hover:text-white transition-colors text-right"
                 onClick={() => handleSortToggle("highestEngagement")}
               >
                 <div className="flex items-center justify-end gap-1">
-                  <span>Engagement</span>
+                  <span>Eng</span>
                   <span className="text-[10px]">
                     {filters.sortBy === "highestEngagement" ? "▼" : "⇅"}
                   </span>
                 </div>
               </th>
 
-              <th className="sticky top-0 bg-[#161822] px-4 py-3.5 z-10 border-b border-[#2D3245] text-center">Actions</th>
+              <th className="sticky top-0 bg-[#161822] px-2 py-3.5 z-10 border-b border-[#2D3245] text-center">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#2D3245]/50">
@@ -204,8 +204,8 @@ export default function ReelsTable({
                   }`}
                 >
                   {/* Reel Info */}
-                  <td className="px-4 py-3 min-w-[200px] max-w-[320px]">
-                    <div className="flex items-center gap-3">
+                  <td className="px-2 py-3 min-w-[180px] max-w-[280px]">
+                    <div className="flex items-center gap-2">
                       <div className="w-8 h-12 rounded bg-[#0F1117] overflow-hidden shrink-0 border border-[#2D3245]/50 flex items-center justify-center">
                         {reel.thumbnail ? (
                           <img
@@ -227,7 +227,7 @@ export default function ReelsTable({
                         <p className="font-semibold text-xs text-white hover:underline truncate">
                           @{reel.username || "unknown"}
                         </p>
-                        <p className="text-[11px] text-gray-400 truncate max-w-[200px]" title={reel.caption}>
+                        <p className="text-[11px] text-gray-400 truncate max-w-[150px]" title={reel.caption}>
                           {reel.caption || "No caption"}
                         </p>
                       </div>
@@ -235,32 +235,32 @@ export default function ReelsTable({
                   </td>
 
                   {/* Category */}
-                  <td className="px-4 py-3 whitespace-nowrap">
+                  <td className="px-2 py-3 whitespace-nowrap">
                     <CategoryBadge category={reel.category} />
                   </td>
 
                   {/* Status */}
-                  <td className="px-4 py-3 whitespace-nowrap">
+                  <td className="px-2 py-3 whitespace-nowrap">
                     <StatusBadge status={reel.status} />
                   </td>
 
                   {/* Added Date */}
-                  <td className="px-4 py-3 text-xs text-gray-400 whitespace-nowrap">
+                  <td className="px-2 py-3 text-xs text-gray-400 whitespace-nowrap">
                     {formatDate(reel.addedDate)}
                   </td>
 
                   {/* Views */}
-                  <td className="px-4 py-3 text-xs font-semibold font-mono text-white text-right whitespace-nowrap">
+                  <td className="px-2 py-3 text-xs font-semibold font-mono text-white text-right whitespace-nowrap">
                     {formatNumber(reel.views)}
                   </td>
 
                   {/* Engagement */}
-                  <td className="px-4 py-3 text-xs font-semibold font-mono text-[#A78BFA] text-right whitespace-nowrap">
+                  <td className="px-2 py-3 text-xs font-semibold font-mono text-[#A78BFA] text-right whitespace-nowrap">
                     {formatNumber(engagement)}
                   </td>
 
                   {/* Actions */}
-                  <td className="px-4 py-3 text-center whitespace-nowrap">
+                  <td className="px-2 py-3 text-center whitespace-nowrap">
                     {deleteConfirmId === reel.id ? (
                       <div className="flex items-center justify-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                         <button
